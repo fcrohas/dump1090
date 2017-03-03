@@ -258,12 +258,16 @@ int modesInitSDRplay(void) {
             fprintf(stderr, "Incorrect API version %f\n", ver);
             return (1);
     }       
+    mir_sdr_RSPII_AntennaControl(mir_sdr_RSPII_ANTENNA_A);
+    mir_sdr_DCoffsetIQimbalanceControl(1,0);
+    //mir_sdr_AgcControl(mir_sdr_AGC_100HZ, -30,0,0,0,0,5);
 
-    mir_sdr_SetParam(201,1);
-    mir_sdr_SetParam(202,0);
+    //mir_sdr_SetParam(201,1);
+    //mir_sdr_SetParam(202,0);
 
     /* Initialize SDRplay device */
-    err = mir_sdr_Init (9, 8.000, 1090.048, mir_sdr_BW_1_536, mir_sdr_IF_2_048, &Modes.sdrplaySamplesPerPacket);
+    err = mir_sdr_Init (9, 8.000, 1090.000, mir_sdr_BW_1_536, mir_sdr_IF_2_048, &Modes.sdrplaySamplesPerPacket);
+    mir_sdr_RSP_SetGr(30,1,0,0);
 
     if (err){
             fprintf(stderr, "Unable to initialize RSP\n");
@@ -307,7 +311,6 @@ int modesInitSDRplay(void) {
 // uses a callback to populate the data buffer.
 //
 // A Mutex is used to avoid races with the decoding thread.
-//
 void rtlsdrCallback(unsigned char *buf, uint32_t len, void *ctx) {
 
     MODES_NOTUSED(ctx);
