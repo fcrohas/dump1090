@@ -260,21 +260,36 @@ int modesInitSDRplay(void) {
     }       
     mir_sdr_RSPII_AntennaControl(mir_sdr_RSPII_ANTENNA_A);
     mir_sdr_DCoffsetIQimbalanceControl(1,0);
-    //mir_sdr_AgcControl(mir_sdr_AGC_100HZ, -30,0,0,0,0,5);
+    if (Modes.enable_agc) {
+         mir_sdr_AgcControl(mir_sdr_AGC_100HZ, -30,0,0,0,0,5);
+    } else {
+         mir_sdr_AgcControl(mir_sdr_AGC_DISABLE, -30,0,0,0,0,0);
+    }
 
+    err = mir_sdr_SetPpm(Modes.ppm_error);
+    if (err){
+       fprintf(stderr, "Unable to set PPM value in RSP, error %2d\n",err);
+       return (1);
+    }  
     //mir_sdr_SetParam(201,1);
     //mir_sdr_SetParam(202,0);
 
     /* Initialize SDRplay device */
-    err = mir_sdr_Init (9, 8.000, 1090.000, mir_sdr_BW_1_536, mir_sdr_IF_2_048, &Modes.sdrplaySamplesPerPacket);
-    mir_sdr_RSP_SetGr(30,1,0,0);
-
+    err = mir_sdr_Init (9, 8.000, (double)Modes.freq/1000000, mir_sdr_BW_1_536, mir_sdr_IF_2_048, &Modes.sdrplaySamplesPerPacket);
     if (err){
-            fprintf(stderr, "Unable to initialize RSP\n");
+            fprintf(stderr, "Unable to initialize RSP frequency : %.2f Mhz\n",(double)Modes.freq/1000000);
             return (1);
     }  
-    /* Allocate 16-bit I and Q buffers */
 
+    if (Modes.gain != MODES_AUTO_GAIN) {
+    	err = mir_sdr_RSP_SetGr(Modes.gain/10,0,0,0);
+    	if (err){
+            fprintf(stderr, "Unable to set Gain in RSP, error %2d\n",err);
+            return (1);
+    	}  
+    }
+
+    /* Allocate 16-bit I and Q buffers */
     Modes.sdrplay_i = malloc ((Modes.sdrplaySamplesPerPacket >> 2) * sizeof(short));
     Modes.sdrplay_q = malloc ((Modes.sdrplaySamplesPerPacket >> 2) * sizeof(short));
     Modes.sdrplay_ii = malloc (Modes.sdrplaySamplesPerPacket * sizeof(short));
