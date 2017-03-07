@@ -84,6 +84,7 @@ void modesInitConfig(void) {
     Modes.interactive_display_ttl = MODES_INTERACTIVE_DISPLAY_TTL;
     Modes.fUserLat                = MODES_USER_LATITUDE_DFLT;
     Modes.fUserLon                = MODES_USER_LONGITUDE_DFLT;
+    Modes.lna_state		  = 0;
 }
 //
 //=========================================================================
@@ -261,7 +262,7 @@ int modesInitSDRplay(void) {
     mir_sdr_RSPII_AntennaControl(mir_sdr_RSPII_ANTENNA_A);
     mir_sdr_DCoffsetIQimbalanceControl(1,0);
     if (Modes.enable_agc) {
-         mir_sdr_AgcControl(mir_sdr_AGC_100HZ, -30,0,0,0,0,5);
+         mir_sdr_AgcControl(mir_sdr_AGC_100HZ, -30,0,0,0,0,Modes.lna_state);
     } else {
          mir_sdr_AgcControl(mir_sdr_AGC_DISABLE, -30,0,0,0,0,0);
     }
@@ -275,14 +276,30 @@ int modesInitSDRplay(void) {
     //mir_sdr_SetParam(202,0);
 
     /* Initialize SDRplay device */
-    err = mir_sdr_Init (9, 8.000, (double)Modes.freq/1000000, mir_sdr_BW_1_536, mir_sdr_IF_2_048, &Modes.sdrplaySamplesPerPacket);
+    err = mir_sdr_Init (9, 8.000, (double)Modes.freq/1e6, mir_sdr_BW_1_536, mir_sdr_IF_2_048, &Modes.sdrplaySamplesPerPacket);
     if (err){
-            fprintf(stderr, "Unable to initialize RSP frequency : %.2f Mhz\n",(double)Modes.freq/1000000);
+            fprintf(stderr, "Unable to initialize RSP frequency : %.2f Mhz\n",(double)Modes.freq/1e6);
             return (1);
     }  
-
+    if (!Modes.enable_agc) {
+	 // Activate extended range
+	 err = mir_sdr_RSP_SetGrLimits(mir_sdr_EXTENDED_MIN_GR);
+    	 if (err){
+	       fprintf(stderr, "Unable to setextended gain range in RSP, error %2d\n",err);
+       		return (1);
+	 }  
+    }
     if (Modes.gain != MODES_AUTO_GAIN) {
-    	err = mir_sdr_RSP_SetGr(Modes.gain/10,0,0,0);
+	mir_sdr_BandT band;
+	int gRdB = Modes.gain / 10;
+	int gRdBsystem;
+	err = mir_sdr_GetGrByFreq((double)Modes.freq/1e6, &band, &gRdB, Modes.lna_state, &gRdBsystem, mir_sdr_USE_RSP_SET_GR);
+        fprintf(stdout, "GetGrByFreq requested gain for band %2d reduction %2d returned if gain reduction %2d , overall gain reduction is %2d\n",(int)band, Modes.gain/10, gRdB, gRdBsystem);
+    	if (err){
+        	fprintf(stderr, "Unable to get IF gain reduction value RSP, error %2d\n",err);
+		return (1);
+	}
+    	err = mir_sdr_RSP_SetGr(gRdB,Modes.lna_state,0,0);
     	if (err){
             fprintf(stderr, "Unable to set Gain in RSP, error %2d\n",err);
             return (1);
@@ -520,8 +537,9 @@ int sdrplay_start_rx(void) {
             data_index = 0;  // pointer back to start of buffer */
 
             /* adjust gain if required */
-            if (max_sig > MAX_GAIN_THRESH) mir_sdr_SetGr (1, 0, 0);
-            if (max_sig < MIN_GAIN_THRESH) mir_sdr_SetGr (-1, 0, 0);
+
+            if (max_sig > MAX_GAIN_THRESH) mir_sdr_RSP_SetGr (1, Modes.lna_state, 0, 0);
+            if (max_sig < MIN_GAIN_THRESH) mir_sdr_RSP_SetGr (-1, Modes.lna_state, 0, 0);
         }
 
 		/* insert any remaining signal at start of buffer */
@@ -626,6 +644,7 @@ void showHelp(void) {
 "--device-index <index>   Select RTL device (default: 0)\n"
 #ifdef SDRPLAY
 "--dev-rtlsdr             use RTL device instead of RSP device (default: RSP).\n"
+"--lna-state              switch SDRPLAY RSP2 lnstate (default: 0).\n"
 #endif
 "--gain <db>              Set gain (default: max gain. Use -10 for auto-gain)\n"
 "--enable-agc             Enable the Automatic Gain Control (default: off)\n"
@@ -907,6 +926,8 @@ int main(int argc, char **argv) {
 #ifdef SDRPLAY
         } else if (!strcmp(argv[j],"--dev-rtlsdr")) {
             Modes.use_sdrplay = 0; Modes.use_rtlsdr = 1;
+        } else if (!strcmp(argv[j],"--lna-state")) {
+            Modes.lna_state = (int) (atof(argv[++j])); // LNA State
 #endif
         } else if (!strcmp(argv[j],"--gain") && more) {
             Modes.gain = (int) (atof(argv[++j])*10); // Gain is in tens of DBs
