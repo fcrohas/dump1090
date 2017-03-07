@@ -85,6 +85,8 @@ void modesInitConfig(void) {
     Modes.fUserLat                = MODES_USER_LATITUDE_DFLT;
     Modes.fUserLon                = MODES_USER_LONGITUDE_DFLT;
     Modes.lna_state		  = 0;
+    Modes.enable_biast		  = 0;
+    Modes.antenna		  = "A";
 }
 //
 //=========================================================================
@@ -259,21 +261,32 @@ int modesInitSDRplay(void) {
             fprintf(stderr, "Incorrect API version %f\n", ver);
             return (1);
     }       
-    mir_sdr_RSPII_AntennaControl(mir_sdr_RSPII_ANTENNA_A);
+    /* Activate biast */
+    if (Modes.enable_biast) {
+	mir_sdr_RSPII_BiasTControl(1);
+    }
+    /* Activate antenna */
+    if (strcmp(Modes.antenna,"A") == 0) {
+    	mir_sdr_RSPII_AntennaControl(mir_sdr_RSPII_ANTENNA_A);
+    } else {
+    	mir_sdr_RSPII_AntennaControl(mir_sdr_RSPII_ANTENNA_B);
+    }
+    /* DC Offset Mode */
     mir_sdr_DCoffsetIQimbalanceControl(1,0);
+    /* Enable AGC control */
     if (Modes.enable_agc) {
          mir_sdr_AgcControl(mir_sdr_AGC_100HZ, -30,0,0,0,0,Modes.lna_state);
     } else {
          mir_sdr_AgcControl(mir_sdr_AGC_DISABLE, -30,0,0,0,0,0);
     }
-
+    /* Frequency correction */
     err = mir_sdr_SetPpm(Modes.ppm_error);
     if (err){
        fprintf(stderr, "Unable to set PPM value in RSP, error %2d\n",err);
        return (1);
     }  
-    //mir_sdr_SetParam(201,1);
-    //mir_sdr_SetParam(202,0);
+    /*mir_sdr_SetParam(201,1); Does not exist in documentation*/ 
+    /*mir_sdr_SetParam(202,0); Does not exist in documentation*/ 
 
     /* Initialize SDRplay device */
     err = mir_sdr_Init (9, 8.000, (double)Modes.freq/1e6, mir_sdr_BW_1_536, mir_sdr_IF_2_048, &Modes.sdrplaySamplesPerPacket);
@@ -645,6 +658,8 @@ void showHelp(void) {
 #ifdef SDRPLAY
 "--dev-rtlsdr             use RTL device instead of RSP device (default: RSP).\n"
 "--lna-state              switch SDRPLAY RSP2 lnstate (default: 0).\n"
+"--antenna                switch SDRPLAY RSP2 antenna (default: A).\n"
+"--enable-biast           switch SDRPLAY RSP2 biast (default: off).\n"
 #endif
 "--gain <db>              Set gain (default: max gain. Use -10 for auto-gain)\n"
 "--enable-agc             Enable the Automatic Gain Control (default: off)\n"
@@ -928,6 +943,10 @@ int main(int argc, char **argv) {
             Modes.use_sdrplay = 0; Modes.use_rtlsdr = 1;
         } else if (!strcmp(argv[j],"--lna-state")) {
             Modes.lna_state = (int) (atof(argv[++j])); // LNA State
+        } else if (!strcmp(argv[j],"--antenna")) {
+            Modes.antenna = strdup(argv[++j]); // Antenna A or B
+        } else if (!strcmp(argv[j],"--enable-biast")) {
+            Modes.enable_biast++; // BiastT activation
 #endif
         } else if (!strcmp(argv[j],"--gain") && more) {
             Modes.gain = (int) (atof(argv[++j])*10); // Gain is in tens of DBs
